@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title> SLUGGISH DIFFUSION EFFECT</title>
+<style>
+  :root{
+    --bg:#0f1113;
+    --panel:#0d0f11;
+    --muted:#9aa3ad;
+    --accent:#1f6feb;
+    --cell-gap:1px;
+  }
+  body{
+    margin:0;
+    padding:18px;
+    background:var(--bg);
+    color:#eee;
+    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    display:flex;
+    gap:18px;
+    align-items:flex-start;
+    min-height:100vh;
+  }
+
+  .left { width:680px; }
+  h1 { margin:0 0 6px 0; font-size:20px; }
+  p.lead { margin:0 0 14px 0; color:var(--muted); font-size:13px; }
+
+  canvas{
+    width:600px;
+    height:600px;
+    background:#0b0b0b;
+    border:1px solid #222;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    display:block;
+  }
+
+  .controls {
+    width:420px;
+    padding:14px;
+    background:linear-gradient(180deg,#0c0c0e,#0a0a0c);
+    border-radius:10px;
+    border:1px solid #1a1a1c;
+  }
+  .controls h3 { margin:0 0 8px 0; font-size:16px; }
+  .row { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; }
+  label { color:var(--muted); font-size:13px; min-width:120px; }
+  input[type="number"], select, input[type="text"] {
+    padding:6px 8px; background:#0b0b0d; color:#eee; border-radius:6px; border:1px solid #222; font-size:13px;
+  }
+  button {
+    background:var(--accent); color:white; padding:8px 10px; border-radius:8px; border:0; cursor:pointer; font-weight:600;
+  }
+  button.secondary { background:#333; }
+  button:disabled { opacity:0.45; cursor:default; }
+
+  .legend { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .chip { display:flex; gap:8px; align-items:center; padding:6px 8px; border-radius:8px; background:#0b0b0d; border:1px solid #222; font-size:13px; }
+  .swatch { width:18px; height:18px; border-radius:4px; display:inline-block; border:1px solid #111; }
+  .muted { color:var(--muted); font-size:13px; margin-top:10px; }
+
+  small.note { display:block; color:var(--muted); margin-top:6px; }
+
+  @media (max-width:980px){
+    body{ flex-direction:column; align-items:center; }
+    .left, .controls { width:95%; }
+    canvas { width:100% !important; height:auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="left">
+  <h1>SLUGGISH DIFFUSION EFFECT</h1>
+  <p class="lead"></p>
+
+  <canvas id="gridCanvas" width="600" height="600"></canvas>
+  <div style="margin-top:8px; color:var(--muted); font-size:13px;">
+    Vacant remaining: <strong id="vacantCount">15</strong>
+    &nbsp;·&nbsp; Favourable now: <strong id="favCount">7</strong>
+    &nbsp;·&nbsp; Unfavourable: <strong id="unfavCount">8</strong>
+  </div>
+</div>
+
+<div class="controls">
+  <h3>Controls</h3>
+
+  <div class="row">
+    <label>Grid size</label>
+    <input id="gridSize" type="number" min="10" max="40" value="20" style="width:90px" />
+    <label style="min-width:110px">Element types</label>
+    <select id="numTypes" style="width:140px">
+      <option value="2">2 types</option>
+      <option value="3" selected>3 types</option>
+      <option value="4">4 types</option>
+      <option value="6">6 types</option>
+      <option value="8">8 types</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>Elements list (picked)</label>
+    <select id="elementList" style="width:240px"></select>
+  </div>
+
+  <div class="row">
+    <label>Pass element (moving)</label>
+    <select id="passElement" style="width:140px"></select>
+
+    <label>Speed</label>
+    <select id="speedSelect" style="width:120px">
+      <option value="600">Slow</option>
+      <option value="350" selected>Medium</option>
+      <option value="150">Fast</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>Favourable vacancies (≥4 neighbors)</label>
+    <input id="favCountInput" type="number" min="0" max="80" value="7" style="width:90px" />
+    <label>Unfavourable vacancies</label>
+    <input id="unfavCountInput" type="number" min="0" max="80" value="8" style="width:90px" />
+  </div>
+
+  <div class="row">
+    <button id="genBtn">Generate Lattice</button>
+    <button id="resetBtn" class="secondary">Reset</button>
+    <button id="autoFill" class="secondary">Auto-fill Remaining</button>
+  </div>
+
+  <hr style="border:none;border-top:1px solid #151617;margin:10px 0">
+
+  <div class="row">
+    <button id="passLeft">Pass from Left</button>
+    <button id="passRight">Pass from Right</button>
+    <button id="passTop">Pass from Top</button>
+    <button id="passBottom">Pass from Bottom</button>
+    <button id="passCorner">Pass from Corner</button>
+  </div>
+
+  <div class="row">
+    <button id="pauseBtn" style="background-color:green;color:white;padding:8px 12px;border-radius:6px;">Pause</button>
+    <button id="stepBtn" class="secondary">Step</button>
+  </div>
+
+  <div class="legend">
+    <div class="chip"><span class="swatch" style="background:#FF4136"></span>Fe</div>
+    <div class="chip"><span class="swatch" style="background:#FF851B"></span>Co</div>
+    <div class="chip"><span class="swatch" style="background:#2ECC40"></span>Ni</div>
+    <div class="chip"><span class="swatch" style="background:#0074D9"></span>Cu</div>
+    <div class="chip"><span class="swatch" style="background:#000"></span>vacant (black)</div>
+    <div class="chip"><span style="width:16px;height:16px;border-radius:50%;background:#ff6161;display:inline-block;border:1px solid #111"></span>moving atom (round)</div>
+  </div>
+
+  <small class="note">Only the <strong>selected pass element</strong> will move. Vacant sites are black circles; favourable ones get a green highlight. Pause freezes the moving atom exactly where it is; Resume continues from that point.</small>
+
+</div>
+
+<script>
+/* ======= Configuration & Globals ======= */
+const canvas = document.getElementById('gridCanvas');
+const ctx = canvas.getContext('2d');
+
+let G = 20;                      // grid size (rows & cols)
+let cellPx = Math.floor(canvas.width / G);
+let grid = [];                   // grid[row][col] => element symbol string or null for vacant
+let vacantSites = [];            // array of {row,col, tag:'fav'|'unfav'}
+let elementsPool = ['Fe','Co','Ni','Cu','Zn','Mn','Cr','Pd','Pt','Ag','Au'];
+let activeElements = [];
+let colorMap = {};
+let favThreshold = 4;            // favourable if >= 4 neighbors of same type
+let moving = false;
+let movingAtom = null;           // {row,col,posX,posY,type,visited:Set,target:{row,col}}
+let moveInterval = null;
+let isPaused = false;
+
+/* UI elements */
+const genBtn = document.getElementById('genBtn');
+const resetBtn = document.getElementById('resetBtn');
+const autoFillBtn = document.getElementById('autoFill');
+const passLeftBtn = document.getElementById('passLeft');
+const passRightBtn = document.getElementById('passRight');
+const passTopBtn = document.getElementById('passTop');
+const passBottomBtn = document.getElementById('passBottom');
+const passCornerBtn = document.getElementById('passCorner');
+const gridSizeInput = document.getElementById('gridSize');
+const numTypesSelect = document.getElementById('numTypes');
+const elementList = document.getElementById('elementList');
+const passElementSelect = document.getElementById('passElement');
+const favCountInput = document.getElementById('favCountInput');
+const unfavCountInput = document.getElementById('unfavCountInput');
+const speedSelect = document.getElementById('speedSelect');
+
+const vacantCountLabel = document.getElementById('vacantCount');
+const favCountLabel = document.getElementById('favCount');
+const unfavCountLabel = document.getElementById('unfavCount');
+
+const pauseBtn = document.getElementById('pauseBtn');
+const stepBtn = document.getElementById('stepBtn');
+
+/* initialize color map (distinct colors) */
+const baseColors = ['#FF4136','#FF851B','#2ECC40','#0074D9','#B10DC9','#FFDC00','#00B3A4','#A64DFF','#FF6B6B','#66CCFF','#FFD166'];
+function initColorMap(elems){
+  colorMap = {};
+  elems.forEach((el,i) => colorMap[el] = baseColors[i % baseColors.length]);
+}
+
+/* ======= Utility functions ======= */
+function randChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function inBounds(r,c){ return r>=0 && r<G && c>=0 && c<G; }
+function manhattan(a,b){ return Math.abs(a.row - b.row) + Math.abs(a.col - b.col); }
+
+function getAllNeighbors(r,c){
+  // 8 neighbors (orthogonal + diagonal)
+  const deltas = [[0,1],[1,0],[0,-1],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+  const out = [];
+  for(const d of deltas){
+    const nr = r + d[1]; // careful: using deltas as [dx,dy] earlier; keep consistent here (use [dr,dc]):
+  }
+  // We'll implement correctly below
+  const deltasRC = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+  const out2 = [];
+  for(const d of deltasRC){
+    const nr = r + d[0], nc = c + d[1];
+    if(inBounds(nr,nc)) out2.push({row:nr,col:nc});
+  }
+  return out2;
+}
+
+function countSameNeighbors(r,c, element){
+  let count = 0;
+  for(const n of getAllNeighbors(r,c)){
+    if(grid[n.row][n.col] === element) count++;
+  }
+  return count;
+}
+
+/* ======= Grid generation ======= */
+function generateGrid(){
+  // read UI
+  G = Math.max(10, Math.min(40, parseInt(gridSizeInput.value) || 20));
+  cellPx = Math.floor(canvas.width / G);
+  const numTypes = Math.max(1, Math.min(elementsPool.length, parseInt(numTypesSelect.value)||3));
+  activeElements = elementsPool.slice(0, numTypes);
+  initColorMap(activeElements);
+
+  // fill elementList and passElement UI
+  elementList.innerHTML = '';
+  activeElements.forEach(el => {
+    const opt = document.createElement('option');
+    opt.value = el; opt.textContent = el;
+    elementList.appendChild(opt);
+  });
+  passElementSelect.innerHTML = '';
+  activeElements.forEach(el => {
+    const opt = document.createElement('option'); opt.value = el; opt.textContent = el;
+    passElementSelect.appendChild(opt);
+  });
+
+  if(!activeElements.includes(passElementSelect.value)) passElementSelect.value = activeElements[0];
+
+  // create grid and fill with random fixed atoms
+  grid = Array.from({length:G}, ()=>Array(G).fill(null));
+  vacantSites = [];
+
+  for(let r=0;r<G;r++){
+    for(let c=0;c<G;c++){
+      grid[r][c] = randChoice(activeElements);
+    }
+  }
+
+  // parse vacancy counts
+  let favWanted = Math.max(0, Math.min(G*G - 1, parseInt(favCountInput.value) || 7));
+  let unfavWanted = Math.max(0, Math.min(G*G - favWanted - 1, parseInt(unfavCountInput.value) || 8));
+  const totalVac = favWanted + unfavWanted;
+
+  // pick distinct vacant positions
+  while(vacantSites.length < totalVac){
+    const r = Math.floor(Math.random()*G);
+    const c = Math.floor(Math.random()*G);
+    if(grid[r][c] !== null && !vacantSites.some(v => v.row===r && v.col===c)){
+      vacantSites.push({row:r,col:c,tag:'unknown'});
+      grid[r][c] = null;
+    }
+  }
+
+  // Ensure exactly favWanted positions become favourable for the selected pass element
+  const passEl = passElementSelect.value || activeElements[0];
+  let shuffledVac = vacantSites.slice().sort(()=>Math.random()-0.5);
+  const favList = shuffledVac.slice(0, Math.min(favWanted, shuffledVac.length));
+
+  // For each fav vacancy, set up to 4 neighbors to passEl
+  favList.forEach(v => {
+    const neigh = getAllNeighbors(v.row, v.col).sort(()=>Math.random()-0.5);
+    let setCount = Math.min(4, neigh.length);
+    for(let i=0;i<setCount;i++){
+      const n = neigh[i];
+      grid[n.row][n.col] = passEl; // make neighbor the pass element to ensure favourability
+    }
+  });
+
+  // Tag vacancies: first favWanted are 'fav', rest 'unfav'
+  for(let i=0;i<vacantSites.length;i++){
+    vacantSites[i].tag = (i < favWanted) ? 'fav' : 'unfav';
+  }
+
+  // redraw
+  stopMoving();
+  drawGrid();
+  updateCounts();
+}
+
+/* ======= Drawing ======= */
+function drawGrid(){
+  // clear and set pixel-perfect canvas size to avoid scaling issues
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  cellPx = Math.floor(canvas.width / G);
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // draw cells as circles
+  for(let r=0;r<G;r++){
+    for(let c=0;c<G;c++){
+      const val = grid[r][c];
+      const cx = c*cellPx + cellPx/2;
+      const cy = r*cellPx + cellPx/2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, (cellPx-4)/2, 0, Math.PI*2);
+      if(val === null){
+        ctx.fillStyle = '#000';
+        ctx.fill();
+      } else {
+        ctx.fillStyle = colorMap[val] || '#666';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#111';
+        ctx.stroke();
+
+        // label
+        ctx.fillStyle = '#fff';
+        ctx.font = `${Math.max(10, Math.floor(cellPx/3.0))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val, cx, cy);
+      }
+    }
+  }
+
+  // highlight favourable vacancies
+  const favs = computeFavourableVacancies();
+  for(const f of favs){
+    const cx = f.col*cellPx + cellPx/2;
+    const cy = f.row*cellPx + cellPx/2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, (cellPx-4)/2 + 2, 0, Math.PI*2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(80,255,140,0.95)';
+    ctx.stroke();
+  }
+
+  // draw moving atom (if present) using subpixel pos
+  if(movingAtom){
+    const px = (typeof movingAtom.posX === 'number') ? movingAtom.posX : (movingAtom.col*cellPx + cellPx/2);
+    const py = (typeof movingAtom.posY === 'number') ? movingAtom.posY : (movingAtom.row*cellPx + cellPx/2);
+    ctx.beginPath();
+    ctx.arc(px, py, (cellPx-4)/2, 0, Math.PI*2);
+    ctx.fillStyle = colorMap[movingAtom.type] || '#ff6666';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#550000';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `${Math.max(9, Math.floor(cellPx/3.5))}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(movingAtom.type, px, py);
+  }
+}
+
+/* ======= Vacancy analysis ======= */
+function computeFavourableVacancies(){
+  const el = (movingAtom && movingAtom.type) ? movingAtom.type : (passElementSelect.value || activeElements[0]);
+  const favs = [];
+  for(const v of vacantSites){
+    const cnt = countSameNeighbors(v.row, v.col, el);
+    if(cnt >= favThreshold) favs.push({row:v.row,col:v.col,cnt});
+  }
+  return favs;
+}
+
+function updateCounts(){
+  const favs = computeFavourableVacancies();
+  vacantCountLabel.textContent = vacantSites.length;
+  favCountLabel.textContent = favs.length;
+  unfavCountLabel.textContent = Math.max(0, vacantSites.length - favs.length);
+}
+
+/* ======= Moving atom logic ======= */
+function setButtonsEnabled(enabled){
+  [passLeftBtn, passRightBtn, passTopBtn, passBottomBtn, passCornerBtn, genBtn, resetBtn, autoFillBtn].forEach(b => b.disabled = !enabled);
+  numTypesSelect.disabled = !enabled;
+  gridSizeInput.disabled = !enabled;
+  favCountInput.disabled = !enabled;
+  unfavCountInput.disabled = !enabled;
+  elementList.disabled = !enabled;
+  passElementSelect.disabled = !enabled;
+  speedSelect.disabled = !enabled;
+}
+
+function stopMoving(){
+  if(moveInterval) { clearInterval(moveInterval); moveInterval = null; }
+  moving = false;
+  movingAtom = null;
+  setButtonsEnabled(true);
+  drawGrid();
+  updateCounts();
+}
+
+function findNearestFavourable(startCoord){
+  const favs = computeFavourableVacancies();
+  if(favs.length === 0) return null;
+  let best = favs[0], bd = Math.abs(best.row - startCoord.row) + Math.abs(best.col - startCoord.col);
+  for(const f of favs){
+    const d = Math.abs(f.row - startCoord.row) + Math.abs(f.col - startCoord.col);
+    if(d < bd){ bd = d; best = f; }
+  }
+  return best;
+}
+
+function passAtomFrom(direction){
+  if(moving) return;
+  if(vacantSites.length === 0){ alert('No vacant sites left'); return; }
+
+  // starting grid coordinate (row,col) based on edge
+  let startRow, startCol;
+  if(direction === 'left'){ startCol = 0; startRow = Math.floor(Math.random()*G); }
+  else if(direction === 'right'){ startCol = G-1; startRow = Math.floor(Math.random()*G); }
+  else if(direction === 'top'){ startRow = 0; startCol = Math.floor(Math.random()*G); }
+  else if(direction === 'bottom'){ startRow = G-1; startCol = Math.floor(Math.random()*G); }
+  else { startRow = 0; startCol = 0; }
+
+  const elType = passElementSelect.value || activeElements[0];
+
+  movingAtom = {
+    row: startRow,
+    col: startCol,
+    posX: startCol*cellPx + cellPx/2,
+    posY: startRow*cellPx + cellPx/2,
+    type: elType,
+    visited: new Set(),
+    target: null
+  };
+
+  moving = true;
+  setButtonsEnabled(false);
+
+  // initial target: nearest favourable vacant for this element
+  movingAtom.target = findNearestFavourable({row:movingAtom.row,col:movingAtom.col});
+
+  const stepMs = parseInt(speedSelect.value) || 350;
+
+  // interval ticks; respect isPaused inside
+  moveInterval = setInterval(() => {
+    if(!isPaused){
+      stepMovingAtom();
+    }
+    // always draw to reflect paused state
+    drawGrid();
+  }, stepMs);
+}
+
+function stepMovingAtom(){
+  if(!movingAtom) { stopMoving(); return; }
+  if(vacantSites.length === 0){ stopMoving(); return; }
+
+  // ensure a target exists; if none, choose nearest vacant unvisited or any
+  if(!movingAtom.target){
+    let candidates = vacantSites.filter(v => !movingAtom.visited.has(`${v.row}_${v.col}`));
+    if(candidates.length === 0) candidates = vacantSites.slice();
+    if(candidates.length === 0){ stopMoving(); return; }
+    // nearest by Manhattan
+    let best = candidates[0], bd = Math.abs(best.row - movingAtom.row) + Math.abs(best.col - movingAtom.col);
+    for(const c of candidates){
+      const d = Math.abs(c.row - movingAtom.row) + Math.abs(c.col - movingAtom.col);
+      if(d < bd){ bd = d; best = c; }
+    }
+    movingAtom.target = {row: best.row, col: best.col};
+  }
+
+  // pixel coords of target center
+  const tx = movingAtom.target.col*cellPx + cellPx/2;
+  const ty = movingAtom.target.row*cellPx + cellPx/2;
+
+  // delta
+  const dx = tx - movingAtom.posX;
+  const dy = ty - movingAtom.posY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+
+  // determine step size (pixels per interval) based on speedSelect
+  // smaller interval -> faster visually; we keep step proportional to cell size
+  const speedVal = parseInt(speedSelect.value) || 350; // ms per step
+  // Map speedVal to a pixel step: slow=600-> step 6 px; med=350->12 px; fast=150->28 px roughly
+  let pixelStep = 12;
+  if(speedVal >= 500) pixelStep = Math.max(3, Math.floor(cellPx / 6));
+  else if(speedVal >= 300) pixelStep = Math.max(6, Math.floor(cellPx / 4));
+  else pixelStep = Math.max(10, Math.floor(cellPx / 2.5));
+
+  if(dist <= pixelStep || dist < 1){
+    // arrive at target center
+    movingAtom.posX = tx;
+    movingAtom.posY = ty;
+    movingAtom.row = movingAtom.target.row;
+    movingAtom.col = movingAtom.target.col;
+
+    // target cell should be vacant (grid[row][col] === null)
+    if(grid[movingAtom.row][movingAtom.col] === null){
+      const cnt = countSameNeighbors(movingAtom.row, movingAtom.col, movingAtom.type);
+      const key = `${movingAtom.row}_${movingAtom.col}`;
+      if(cnt >= favThreshold){
+        // occupy permanently
+        grid[movingAtom.row][movingAtom.col] = movingAtom.type;
+        vacantSites = vacantSites.filter(v => !(v.row === movingAtom.row && v.col === movingAtom.col));
+        stopMoving();
+        drawGrid();
+        updateCounts();
+        return;
+      } else {
+        // unfavourable
+        movingAtom.visited.add(key);
+        // find nearest favourable
+        const nearestFav = findNearestFavourable({row:movingAtom.row,col:movingAtom.col});
+        if(nearestFav){
+          movingAtom.target = {row: nearestFav.row, col: nearestFav.col};
+        } else {
+          // choose nearest unvisited vacant or any
+          let cand = vacantSites.filter(v => !movingAtom.visited.has(`${v.row}_${v.col}`));
+          if(cand.length === 0) cand = vacantSites.slice();
+          if(cand.length === 0){ stopMoving(); return; }
+          let best = cand[0], bd = Math.abs(best.row - movingAtom.row) + Math.abs(best.col - movingAtom.col);
+          for(const c of cand){ const d = Math.abs(c.row - movingAtom.row) + Math.abs(c.col - movingAtom.col); if(d < bd){ bd = d; best = c; } }
+          movingAtom.target = {row:best.row, col:best.col};
+        }
+      }
+    } else {
+      // target occupied unexpectedly - choose a new target
+      movingAtom.target = null;
+    }
+  } else {
+    // step towards target
+    const stepX = (dx / dist) * pixelStep;
+    const stepY = (dy / dist) * pixelStep;
+    movingAtom.posX += stepX;
+    movingAtom.posY += stepY;
+    // update approximate grid coordinates
+    movingAtom.row = Math.min(G-1, Math.max(0, Math.floor((movingAtom.posY - cellPx/2)/cellPx + 0.5)));
+    movingAtom.col = Math.min(G-1, Math.max(0, Math.floor((movingAtom.posX - cellPx/2)/cellPx + 0.5)));
+  }
+}
+
+/* ======= Auto-fill routine ======= */
+function autoFillRemaining(){
+  if(vacantSites.length === 0) return;
+  const doOne = () => {
+    if(vacantSites.length === 0) return;
+    passAtomFrom('left');
+    const watcher = setInterval(() => {
+      if(!moving){
+        clearInterval(watcher);
+        setTimeout(() => {
+          doOne();
+        }, 200);
+      }
+    }, 80);
+  };
+  doOne();
+}
+
+/* ======= Pause / Step Controls ======= */
+pauseBtn.addEventListener('click', () => {
+  isPaused = !isPaused;
+  if(isPaused){
+    pauseBtn.textContent = 'Resume';
+    pauseBtn.style.backgroundColor = 'red';
+  } else {
+    pauseBtn.textContent = 'Pause';
+    pauseBtn.style.backgroundColor = 'green';
+  }
+});
+
+// Step: one explicit step even if paused
+stepBtn.addEventListener('click', () => {
+  if(!moving) return;
+  stepMovingAtom();
+  drawGrid();
+});
+
+/* ======= UI wiring ======= */
+genBtn.addEventListener('click', generateGrid);
+resetBtn.addEventListener('click', () => { stopMoving(); generateGrid(); });
+autoFillBtn.addEventListener('click', autoFillRemaining);
+passLeftBtn.addEventListener('click', () => passAtomFrom('left'));
+passRightBtn.addEventListener('click', () => passAtomFrom('right'));
+passTopBtn.addEventListener('click', () => passAtomFrom('top'));
+passBottomBtn.addEventListener('click', () => passAtomFrom('bottom'));
+passCornerBtn.addEventListener('click', () => passAtomFrom('corner'));
+
+// update element list when numTypes changes
+numTypesSelect.addEventListener('change', () => {
+  const num = parseInt(numTypesSelect.value) || 3;
+  activeElements = elementsPool.slice(0, num);
+  initColorMap(activeElements);
+  elementList.innerHTML = '';
+  activeElements.forEach(el => {
+    const opt = document.createElement('option'); opt.value=el; opt.textContent=el;
+    elementList.appendChild(opt);
+  });
+  passElementSelect.innerHTML = '';
+  activeElements.forEach(el => {
+    const opt = document.createElement('option'); opt.value=el; opt.textContent=el;
+    passElementSelect.appendChild(opt);
+  });
+});
+
+// keep counts live
+setInterval(updateCounts, 700);
+
+// initialize first time
+generateGrid();
+
+</script>
+</body>
+</html>
