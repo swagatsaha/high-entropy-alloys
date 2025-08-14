@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HEA Visualizer — Random Alloy Grid (HTML/JS/CSS)</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a2f; --ink:#e7ecff; --muted:#98a3c7;
+    --accent:#7aa2ff; --accent2:#7ff7d8; --warn:#ffb86b; --bad:#ff6b7a;
+    --ok:#58d68d;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+  }
+  header{
+    padding:16px 20px; border-bottom:1px solid #1b2545; background:linear-gradient(180deg,#0f1730, #0b1020);
+  }
+  header h1{margin:0; font-size:18px; letter-spacing:.2px}
+  header p{margin:6px 0 0; color:var(--muted); font-size:13px}
+
+  .wrap{
+    display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px;
+  }
+  @media (max-width: 900px){
+    .wrap{grid-template-columns: 1fr}
+  }
+
+  .card{
+    background:var(--panel); border:1px solid #1b2545;
+    border-radius:16px; padding:14px;
+    box-shadow:0 10px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .card h2{margin:2px 0 10px; font-size:16px}
+  .row{display:flex; gap:8px; align-items:center; margin:6px 0}
+  .row label{min-width:120px; color:var(--muted)}
+  .row input[type="text"], .row input[type="number"], .row select{
+    width:100%; padding:8px 10px; border-radius:10px; border:1px solid #253059;
+    background:#0b1228; color:var(--ink); outline:none;
+  }
+  .row input[type="checkbox"]{transform:scale(1.2)}
+  .hint{color:var(--muted); font-size:12px}
+  .btns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+  button{
+    padding:9px 12px; border-radius:12px; border:1px solid #2a3563;
+    background:linear-gradient(180deg,#1b2850, #172044); color:var(--ink);
+    cursor:pointer; transition:transform .05s ease, filter .15s ease;
+  }
+  button:hover{filter:brightness(1.1)}
+  button:active{transform:translateY(1px)}
+  .danger{border-color:#5a2731; background:linear-gradient(180deg,#4b1f28,#3a1820)}
+  .good{border-color:#244e3c; background:linear-gradient(180deg,#1c3e31,#163227)}
+  .accent{border-color:#2a4a9a; background:linear-gradient(180deg,#24438e,#1c356f)}
+
+  #legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 10px; border-radius:999px; background:#0b1228; border:1px solid #24305a;
+    font-size:12px; color:var(--ink);
+  }
+  .dot{width:14px; height:14px; border-radius:50%}
+  .pill .meta{color:var(--muted)}
+
+  .canvasWrap{
+    position:relative; display:flex; flex-direction:column; gap:10px; height:100%;
+  }
+  canvas{
+    width:100%; height:calc(100vh - 210px);
+    background:#050914; border:1px solid #1b2545; border-radius:16px;
+  }
+  .stats{
+    display:flex; gap:16px; flex-wrap:wrap; align-items:center;
+    color:var(--muted);
+  }
+  .badge{
+    padding:6px 10px; border-radius:10px; background:#0b1228; border:1px solid #24305a;
+    color:var(--ink); font-weight:600;
+  }
+  .warn{color:var(--warn)}
+  .bad{color:var(--bad)}
+  .ok{color:var(--ok)}
+  .gridRow{
+    display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;
+  }
+  .rowTitle{color:var(--muted); margin:10px 0 4px}
+  .elemRow{
+    display:grid; grid-template-columns: 24px 1fr 90px 90px; gap:8px; align-items:center;
+    margin:4px 0;
+  }
+  .swatch{width:20px; height:20px; border-radius:50%; border:1px solid #333}
+  .small{font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>High Entropy Alloy — Random Solid Solution Visualizer</h1>
+  <p>Choose elements and atomic %; generate random arrangements on a large grid. Different colors/sizes per element. Live S<sub>conf</sub>/R shown.</p>
+</header>
+
+<div class="wrap">
+  <!-- Controls -->
+  <div class="card" id="controls">
+    <h2>Controls</h2>
+    <div class="row">
+      <label for="gridSize">Grid size</label>
+      <input id="gridSize" type="number" min="20" max="120" step="10" value="60" />
+    </div>
+    <div class="row">
+      <label for="numElems">Number of elements</label>
+      <input id="numElems" type="number" min="1" max="8" step="1" value="3" />
+    </div>
+    <div class="row">
+      <label for="autoNormalize">Auto-normalize %</label>
+      <input id="autoNormalize" type="checkbox" checked />
+    </div>
+    <div class="row">
+      <label for="jitter">Random jitter</label>
+      <input id="jitter" type="number" min="0" max="0.49" step="0.01" value="0.15" />
+    </div>
+    <div class="row">
+      <label for="seed">Random seed</label>
+      <input id="seed" type="number" value="0" />
+    </div>
+
+    <div class="rowTitle">Elements (name, % at., size scale)</div>
+    <div id="elementRows"></div>
+    <div class="hint small">Tip: sizes default from atomic radii; tweak "Size" to exaggerate lattice distortion visually.</div>
+
+    <div class="btns">
+      <button class="accent" id="generateBtn">Generate</button>
+      <button id="shuffleBtn">Regenerate (same mix)</button>
+      <button class="good" id="downloadBtn">Download PNG</button>
+      <button class="danger" id="resetBtn">Reset</button>
+    </div>
+
+    <div class="rowTitle">Legend</div>
+    <div id="legend"></div>
+  </div>
+
+  <!-- Canvas + Stats -->
+  <div class="card canvasWrap">
+    <div class="stats">
+      <span class="badge">S<sub>conf</sub>/R: <span id="entropy">–</span></span>
+      <span class="badge">Sum %: <span id="sumPct">–</span></span>
+      <span>•</span>
+      <span class="hint">FCC/BCC/HCP not enforced; this is a visual random substitutional alloy.</span>
+    </div>
+    <canvas id="canvas" width="1400" height="900"></canvas>
+  </div>
+</div>
+
+<script>
+/* -------- Atomic radii (pm) for sizing defaults -------- */
+const ATOMIC_RADII_PM = {
+  H:53, He:31, Li:167, Be:112, B:87, C:67, N:56, O:48, F:42, Ne:38,
+  Na:190, Mg:145, Al:118, Si:111, P:98, S:88, Cl:79, Ar:71,
+  K:243, Ca:194, Sc:184, Ti:176, V:171, Cr:166, Mn:161, Fe:156, Co:152, Ni:149,
+  Cu:145, Zn:142, Ga:136, Ge:125, As:114, Se:103, Br:94, Kr:88,
+  Rb:265, Sr:219, Y:212, Zr:206, Nb:198, Mo:190, Tc:183, Ru:178, Rh:173, Pd:169,
+  Ag:165, Cd:161, In:156, Sn:145, Sb:133, Te:123, I:115, Xe:108,
+  Cs:298, Ba:253, La:195, Ce:185, Pr:247, Nd:206, Pm:205, Sm:238, Eu:231, Gd:233,
+  Tb:225, Dy:228, Ho:226, Er:226, Tm:222, Yb:222, Lu:217,
+  Hf:208, Ta:200, W:193, Re:188, Os:185, Ir:180, Pt:177, Au:174, Hg:171,
+  Tl:156, Pb:154, Bi:143, Po:135, At:127, Rn:120,
+  Fr:348, Ra:283, Ac:195, Th:180, Pa:161, U:175, Np:175, Pu:159, Am:173, Cm:174
+};
+
+/* -------- Distinct color palette generator -------- */
+function nicePalette(n){
+  // Precompute up to 12 vivid hues (extend if needed)
+  const base = [
+    "#4E79A7","#F28E2B","#E15759","#76B7B2","#59A14F",
+    "#EDC948","#B07AA1","#FF9DA7","#9C755F","#BAB0AC",
+    "#7F7FFF","#20C997"
+  ];
+  const out = [];
+  for(let i=0;i<n;i++){
+    out.push(base[i % base.length]);
+  }
+  return out;
+}
+
+/* -------- UI dynamic element rows -------- */
+const elementRowsDiv = document.getElementById('elementRows');
+const numElemsInput = document.getElementById('numElems');
+
+function makeElemRow(i, color){
+  const row = document.createElement('div');
+  row.className = 'elemRow';
+  row.innerHTML = `
+    <div class="swatch" style="background:${color}"></div>
+    <input type="text" placeholder="Element (e.g., Fe)" value="${['Fe','Co','Ni','Cu','Mn','Cr','Al','Ti'][i]||''}" />
+    <input type="number" min="0" max="100" step="1" value="${[40,30,30,0,0,0,0,0][i]||0}" />
+    <input type="number" min="0.2" max="3" step="0.1" value="1.0" />
+  `;
+  // title hints
+  row.children[1].title = "Element symbol/name";
+  row.children[2].title = "% at. (must sum to 100 unless Auto-normalize is on)";
+  row.children[3].title = "Size scale (1.0 = default from atomic radius)";
+  return row;
+}
+
+function rebuildRows(){
+  elementRowsDiv.innerHTML = '';
+  const n = clamp(parseInt(numElemsInput.value||1),1,8);
+  const cols = nicePalette(n);
+  for(let i=0;i<n;i++){
+    elementRowsDiv.appendChild(makeElemRow(i, cols[i]));
+  }
+  updateLegend();
+  updateSum();
+}
+numElemsInput.addEventListener('change', rebuildRows);
+
+/* -------- Helpers -------- */
+function clamp(v,min,max){return Math.max(min, Math.min(max, v));}
+function rand(seed){ // simple LCG for reproducible shuffle
+  let s = seed>>>0;
+  return () => (s = (1664525*s + 1013904223)>>>0) / 4294967296;
+}
+function shuffleInPlace(arr, rnd){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(rnd()* (i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+function ln(x){return Math.log(x);}
+
+/* -------- Read UI state -------- */
+function getState(){
+  const gridSize = clamp(parseInt(document.getElementById('gridSize').value||60), 10, 200);
+  const jitter = clamp(parseFloat(document.getElementById('jitter').value||0.15), 0, 0.49);
+  const autoNorm = document.getElementById('autoNormalize').checked;
+  const seed = parseInt(document.getElementById('seed').value||0);
+
+  const rows = [...elementRowsDiv.querySelectorAll('.elemRow')];
+  const elems = [];
+  const colors = [];
+  const pcts = [];
+  const sizeScales = [];
+
+  rows.forEach((r, idx)=>{
+    const name = r.children[1].value.trim() || `E${idx+1}`;
+    const pct  = parseFloat(r.children[2].value||0);
+    const scl  = parseFloat(r.children[3].value||1.0);
+    const color = r.querySelector('.swatch').style.background;
+
+    elems.push(name);
+    pcts.push(isFinite(pct)? pct: 0);
+    sizeScales.push(isFinite(scl)? scl: 1.0);
+    colors.push(color);
+  });
+
+  return {gridSize, jitter, autoNorm, seed, elems, pcts, sizeScales, colors};
+}
+
+function updateSum(){
+  const {pcts, autoNorm} = getState();
+  const s = pcts.reduce((a,b)=>a+(isFinite(b)?b:0),0);
+  const sumPct = document.getElementById('sumPct');
+  sumPct.textContent = s.toFixed(1) + '%';
+  sumPct.parentElement.classList.toggle('bad', Math.abs(s-100)>0.01 && !autoNorm);
+  sumPct.parentElement.classList.toggle('ok', Math.abs(s-100)<=0.01 || autoNorm);
+}
+
+function updateLegend(){
+  const leg = document.getElementById('legend');
+  const {elems, pcts, colors, sizeScales} = getState();
+  leg.innerHTML = '';
+  elems.forEach((e, i)=>{
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = colors[i];
+    pill.appendChild(dot);
+    const txt = document.createElement('span');
+    const radiusPm = ATOMIC_RADII_PM[e] || ATOMIC_RADII_PM[e.charAt(0).toUpperCase()+e.slice(1)] || 150;
+    txt.innerHTML = `<strong>${e}</strong> <span class="meta">| ${pcts[i]||0}% | r≈${radiusPm} pm | size×${sizeScales[i].toFixed(1)}</span>`;
+    pill.appendChild(txt);
+    leg.appendChild(pill);
+  });
+}
+
+/* -------- Entropy -------- */
+function entropyOverR(pcts){
+  let total = pcts.reduce((a,b)=>a+b,0);
+  if(total<=0) return 0;
+  let s = 0;
+  for(const p of pcts){
+    if(p>0){
+      const c = p/total;
+      s += - c * ln(c);
+    }
+  }
+  return s; // dimensionless, per R
+}
+
+/* -------- Grid generation -------- */
+function generateGridAssignments(N, elems, pcts, rnd){
+  // counts per species by multinomial rounding
+  const totalPct = pcts.reduce((a,b)=>a+b,0);
+  let fractions = pcts.map(p=> totalPct>0 ? (p/totalPct) : 0);
+  // initial counts
+  let counts = fractions.map(f=> Math.floor(f*N));
+  // distribute remainder
+  let remain = N - counts.reduce((a,b)=>a+b,0);
+  while(remain>0){
+    // weighted pick
+    const idx = Math.floor(rnd()* elems.length);
+    counts[idx]++; remain--;
+  }
+  // build array of species indices
+  const arr = [];
+  counts.forEach((cnt, i)=>{
+    for(let k=0;k<cnt;k++) arr.push(i);
+  });
+  shuffleInPlace(arr, rnd);
+  return arr;
+}
+
+/* -------- Drawing -------- */
+function drawAlloy(){
+  const st = getState();
+  // Normalize if requested
+  let pcts = [...st.pcts];
+  if(st.autoNorm){
+    const s = pcts.reduce((a,b)=>a+b,0);
+    if(s>0){ pcts = pcts.map(p=> p*100/s); }
+  }
+  updateSum(); updateLegend();
+
+  // Entropy
+  const S_over_R = entropyOverR(pcts);
+  const ent = document.getElementById('entropy');
+  ent.textContent = S_over_R.toFixed(3);
+
+  const {gridSize, elems, sizeScales, colors, jitter} = st;
+  const N = gridSize*gridSize;
+  const rnd = rand(st.seed || Math.floor(Math.random()*1e9));
+  const assign = generateGridAssignments(N, elems, pcts, rnd);
+
+  // canvas setup
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#050914'; ctx.fillRect(0,0,W,H);
+
+  // compute layout (square grid)
+  const cols = gridSize;
+  const rows = gridSize;
+  // margin and cell size
+  const pad = 24;
+  const cellW = (W - pad*2) / cols;
+  const cellH = (H - pad*2) / rows;
+  const cell = Math.min(cellW, cellH);
+  const offX = (W - cell*cols)/2;
+  const offY = (H - cell*rows)/2;
+
+  // radius scale baseline from atomic radii
+  function pxRadiusFor(elemName, scale){
+    const key = elemName in ATOMIC_RADII_PM ? elemName
+      : (elemName && (elemName.charAt(0).toUpperCase()+elemName.slice(1)) in ATOMIC_RADII_PM
+        ? (elemName.charAt(0).toUpperCase()+elemName.slice(1)) : null);
+    const pm = key ? ATOMIC_RADII_PM[key] : 150;
+    // map pm to ~0.35*cell (heuristic)
+    const base = (pm/200) * (cell*0.55);
+    const r = Math.max(1.5, Math.min(base*scale, cell*0.48));
+    return r;
+  }
+
+  // Draw atoms
+  let idx = 0;
+  for(let r=0; r<rows; r++){
+    for(let c=0; c<cols; c++){
+      const sp = assign[idx++];
+      const name = elems[sp] || `E${sp+1}`;
+      const color = colors[sp] || '#aaa';
+      const sizeScale = sizeScales[sp] || 1.0;
+
+      // center of the cell
+      const cx = offX + c*cell + cell*0.5;
+      const cy = offY + r*cell + cell*0.5;
+
+      // small positional jitter to visualize "disorder"
+      const jx = (rnd()-0.5) * cell * (jitter*2);
+      const jy = (rnd()-0.5) * cell * (jitter*2);
+
+      const rad = pxRadiusFor(name, sizeScale);
+
+      ctx.beginPath();
+      ctx.arc(cx + jx, cy + jy, rad, 0, Math.PI*2);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // subtle stroke
+      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = "rgba(12,16,40,0.9)";
+      ctx.stroke();
+    }
+  }
+}
+
+/* -------- Buttons -------- */
+document.getElementById('generateBtn').addEventListener('click', ()=>{
+  // new seed from time for a fresh arrangement
+  document.getElementById('seed').value = Math.floor(Math.random()*1e9);
+  drawAlloy();
+});
+
+document.getElementById('shuffleBtn').addEventListener('click', ()=>{
+  // keep seed? no — change seed to reshuffle with same composition
+  document.getElementById('seed').value = Math.floor(Math.random()*1e9);
+  drawAlloy();
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  document.getElementById('gridSize').value = 60;
+  document.getElementById('numElems').value = 3;
+  document.getElementById('autoNormalize').checked = true;
+  document.getElementById('jitter').value = 0.15;
+  document.getElementById('seed').value = 0;
+  rebuildRows();
+  drawAlloy();
+});
+
+document.getElementById('downloadBtn').addEventListener('click', ()=>{
+  const link = document.createElement('a');
+  link.download = 'hea_random_grid.png';
+  link.href = document.getElementById('canvas').toDataURL('image/png');
+  link.click();
+});
+
+/* Re-draw on input changes (lightweight) */
+['gridSize','jitter','seed','autoNormalize'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=> drawAlloy());
+});
+numElemsInput.addEventListener('change', ()=> { rebuildRows(); drawAlloy(); });
+elementRowsDiv.addEventListener('input', (e)=>{
+  // update legend and % sum live
+  if(e.target && (e.target.tagName==='INPUT')){
+    updateLegend(); updateSum();
+  }
+});
+
+/* -------- Init -------- */
+rebuildRows();
+drawAlloy();
+</script>
+</body>
+</html>
